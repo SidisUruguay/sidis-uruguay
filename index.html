@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Catálogo de CDs, cassettes y DVDs de SIDIS URUGUAY. Música de todos los estilos.">
+<title>SIDIS URUGUAY | Catálogo musical</title>
+<style>
+:root{--bg:#10131d;--panel:#1b2030;--ink:#fff7e8;--muted:#b8bfd0;--hot:#ff5b35;--yellow:#ffd34e;--cyan:#56d6d0}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 15% 0%,#34305c 0,transparent 35%),var(--bg);color:var(--ink);font-family:Arial,Helvetica,sans-serif}
+header{padding:28px 18px 24px;text-align:center;background:linear-gradient(135deg,#29214a,#171c2b 60%,#3c1f35);border-bottom:3px solid var(--yellow)}
+.logo{font-weight:1000;letter-spacing:2px;font-size:clamp(34px,8vw,64px);line-height:1;text-shadow:3px 3px 0 var(--hot),6px 6px 0 #000}
+.logo span{color:var(--yellow)}.tag{margin:14px 0 0;color:#e6e5f0;font-weight:bold;letter-spacing:2px;font-size:12px}
+.wrap{max-width:1100px;margin:auto;padding:22px 16px 48px}
+.intro{text-align:center;margin:8px auto 22px;max-width:680px;color:var(--muted);line-height:1.5}
+.controls{display:grid;grid-template-columns:1fr 170px 150px;gap:10px;margin:20px 0}
+input,select{width:100%;padding:13px 14px;border-radius:10px;border:1px solid #454d65;background:#171c2a;color:white;font-size:15px}
+.count{color:var(--muted);font-size:13px;margin:10px 2px 14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.item{background:linear-gradient(160deg,#242b40,#191e2c);border:1px solid #343c54;border-radius:15px;padding:16px;min-height:172px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 24px #0003}
+.type{font-size:11px;letter-spacing:1.5px;color:var(--cyan);font-weight:bold;text-transform:uppercase}
+.item h3{margin:0;font-size:18px;line-height:1.2}.album{color:#e2e5ee;font-size:14px;line-height:1.35}
+.meta{font-size:12px;color:var(--muted)}.bottom{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.price{font-size:20px;font-weight:900;color:var(--yellow)}
+.status{font-size:11px;color:#a8f1c6;border:1px solid #3c8062;border-radius:30px;padding:5px 8px}
+.empty{grid-column:1/-1;padding:34px 18px;text-align:center;color:var(--muted);border:1px dashed #59617a;border-radius:14px}
+footer{text-align:center;padding:24px;color:var(--muted);border-top:1px solid #30364a;font-size:13px}
+footer strong{color:var(--yellow)}
+@media(max-width:650px){.controls{grid-template-columns:1fr}.wrap{padding-top:16px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">SIDIS <span>URUGUAY</span></div>
+  <div class="tag">CDs · CASSETTES · DVDs · MÚSICA PARA TODOS</div>
+</header>
+<main class="wrap">
+  <p class="intro">Bienvenidos al catálogo de SIDIS URUGUAY. Buscá tus artistas y álbumes favoritos y consultá por disponibilidad.</p>
+  <section class="controls" aria-label="Buscar y filtrar catálogo">
+    <input id="search" type="search" placeholder="Buscar por artista o álbum...">
+    <select id="format"><option value="">Todos los formatos</option><option>CD</option><option>Cassette</option><option>DVD</option><option>Otro</option></select>
+    <select id="genre"><option value="">Todos los géneros</option></select>
+  </section>
+  <div class="count" id="count">Cargando catálogo...</div>
+  <section class="grid" id="catalog"><div class="empty">Cargando los discos...</div></section>
+</main>
+<footer><strong>SIDIS URUGUAY</strong><br>Consultas y pedidos por mensaje directo en Instagram.</footer>
+<script>
+/*
+ CONFIGURACIÓN:
+ 1) En Google Sheets: Archivo > Compartir > Publicar en la web.
+ 2) Elegí únicamente la pestaña "Catálogo público" y formato CSV.
+ 3) Copiá el enlace publicado y pegalo entre las comillas de SHEET_CSV_URL.
+ 4) Volvé a subir este archivo a GitHub Pages.
+*/
+const SHEET_CSV_URL = "PEGAR_AQUI_EL_ENLACE_CSV_PUBLICADO";
+let records = [];
+const $ = id => document.getElementById(id);
+
+function parseCSV(text){
+  const rows=[]; let row=[], field="", quoted=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i], next=text[i+1];
+    if(ch === '"' && quoted && next === '"'){field+='"';i++}
+    else if(ch === '"'){quoted=!quoted}
+    else if(ch === ',' && !quoted){row.push(field);field=""}
+    else if((ch === '\n' || ch === '\r') && !quoted){
+      if(ch==='\r' && next==='\n')i++;
+      row.push(field); if(row.some(v=>v.trim()!==''))rows.push(row);
+      row=[];field="";
+    } else field+=ch;
+  }
+  row.push(field); if(row.some(v=>v.trim()!==''))rows.push(row);
+  return rows;
+}
+function money(value){
+  const n=Number(String(value).replace(/[^\d,.-]/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.'));
+  return Number.isFinite(n)&&n>0 ? '$ '+n.toLocaleString('es-UY') : 'Consultar';
+}
+function render(){
+  const term=$('search').value.trim().toLocaleLowerCase('es');
+  const fmt=$('format').value, genre=$('genre').value;
+  const filtered=records.filter(x=>
+    (!term || (x.artist+' '+x.album).toLocaleLowerCase('es').includes(term)) &&
+    (!fmt || x.format===fmt) && (!genre || x.genre===genre)
+  );
+  $('count').textContent=`${filtered.length} artículo(s) disponible(s)`;
+  $('catalog').innerHTML=filtered.length ? filtered.map(x=>`
+    <article class="item">
+      <div class="type">${escapeHTML(x.format||'Formato')}</div>
+      <h3>${escapeHTML(x.artist||'Artista no indicado')}</h3>
+      <div class="album">${escapeHTML(x.album||'Título no indicado')}</div>
+      <div class="meta">${escapeHTML([x.genre,x.condition].filter(Boolean).join(' · '))}</div>
+      <div class="bottom"><span class="price">${money(x.price)}</span><span class="status">Disponible</span></div>
+    </article>`).join('') : '<div class="empty">No encontramos discos con esa búsqueda. Probá con otro artista o título.</div>';
+}
+function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function load(){
+  if(SHEET_CSV_URL.startsWith('PEGAR_')){
+    $('count').textContent='Catálogo listo para conectar con tu inventario';
+    $('catalog').innerHTML='<div class="empty">Todavía estamos preparando el catálogo. En cuanto conectes tu Google Sheets, tus discos aparecerán acá.</div>';
+    return;
+  }
+  try{
+    const response=await fetch(SHEET_CSV_URL);
+    if(!response.ok) throw new Error('No se pudo leer la planilla');
+    const rows=parseCSV(await response.text());
+    records=rows.slice(1).map(r=>({artist:r[0]||'',album:r[1]||'',format:r[2]||'',genre:r[3]||'',condition:r[4]||'',price:r[5]||''}))
+      .filter(x=>x.artist||x.album);
+    const genres=[...new Set(records.map(x=>x.genre).filter(Boolean))].sort();
+    $('genre').innerHTML='<option value="">Todos los géneros</option>'+genres.map(g=>`<option>${escapeHTML(g)}</option>`).join('');
+    render();
+  }catch(e){
+    $('count').textContent='No pudimos cargar el catálogo';
+    $('catalog').innerHTML='<div class="empty">Revisá que la pestaña Catálogo público esté publicada como CSV y que el enlace esté bien copiado.</div>';
+  }
+}
+['search','format','genre'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',render));
+load();
+</script>
+</body>
+</html>
